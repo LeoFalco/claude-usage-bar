@@ -17,7 +17,8 @@ struct ClaudeUsageBarApp: App {
         MenuBarExtra {
             PanelView(model: model)
         } label: {
-            Text("✳︎ " + (model.usage?.menuBarTitle ?? (model.error == nil ? "…" : "⚠︎")))
+            Image(nsImage: menuBarImage(model.menuBarText, level: model.alertLevel))
+                .accessibilityLabel(model.menuBarText)
         }
         .menuBarExtraStyle(.window)
     }
@@ -116,11 +117,21 @@ final class UsageModel: ObservableObject {
         opensAtLogin = SMAppService.mainApp.status == .enabled
     }
 
+    var alertLevel: AlertLevel {
+        (usage?.rows ?? []).map { UsageCore.alertLevel(for: $0) }.max() ?? .none
+    }
+
+    var menuBarText: String {
+        guard let usage else { return error == nil ? "✳︎ …" : "⚠︎" }
+        return (alertLevel == .none ? "✳︎ " : "⚠︎ ") + usage.menuBarTitle
+    }
+
     func refresh() async {
         do {
             usage = try await fetchUsage()
             error = nil
             updatedAt = Date()
+            notify(alerts(for: usage?.rows ?? []))
         } catch {
             self.error = error.localizedDescription
         }

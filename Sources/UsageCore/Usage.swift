@@ -135,3 +135,33 @@ public func projection(for row: UsageRow, now: Date = Date()) -> Projection? {
     if projected <= 100 { return .lasts(percentAtReset: projected) }
     return .runsOut(at: now.addingTimeInterval((100 - row.percent) * elapsed / row.percent))
 }
+
+/// How worrying a limit is. Higher is worse.
+public enum AlertLevel: Int, Comparable {
+    case none, pace, high
+    public static func < (a: AlertLevel, b: AlertLevel) -> Bool { a.rawValue < b.rawValue }
+}
+
+/// `high` from 90% used; `pace` when the current pace runs out before the reset.
+public func alertLevel(for row: UsageRow, now: Date = Date()) -> AlertLevel {
+    if row.percent >= 90 { return .high }
+    if case .runsOut? = projection(for: row, now: now) { return .pace }
+    return .none
+}
+
+/// One notification-worthy event. `key` is stable for a limit, its window and the level,
+/// so the same alert is sent once per window.
+public struct UsageAlert: Equatable {
+    public let key: String
+    public let level: AlertLevel
+    public let row: UsageRow
+}
+
+public func alerts(for rows: [UsageRow], now: Date = Date()) -> [UsageAlert] {
+    rows.compactMap { row in
+        let level = alertLevel(for: row, now: now)
+        guard level != .none else { return nil }
+        let window = row.resetsAt.map { String(Int($0.timeIntervalSince1970 / 60)) } ?? "none"
+        return UsageAlert(key: "\(row.title)|\(window)|\(level.rawValue)", level: level, row: row)
+    }
+}

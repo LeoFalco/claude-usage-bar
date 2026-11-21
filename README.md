@@ -16,6 +16,11 @@ The menu bar shows `✳︎` followed by the highest session % and the highest we
 - refresh every 5 minutes, or right away with Refresh, ⌘R;
 - the gear menu holds Open at login and Quit, ⌘Q.
 
+### Alerts
+
+- **Menu bar**: when a limit's pace runs out before its reset, `✳︎` turns into `⚠︎` in orange; from 90% used it turns red. Otherwise it stays monochrome like the other menu bar icons.
+- **Notifications**: a macOS notification when a limit's pace runs out before reset, and another when it passes 90%. Each is sent once per limit window, also across restarts. macOS asks for permission the first time.
+
 ## Install
 
 ```bash

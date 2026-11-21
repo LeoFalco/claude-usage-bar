@@ -77,4 +77,19 @@ final class UsageTests: XCTestCase {
         let session = UsageRow(group: "session", title: "Session", percent: 10, resetsAt: now.addingTimeInterval(4 * 3600))
         XCTAssertEqual(projection(for: session, now: now), .lasts(percentAtReset: 50))
     }
+
+    func testAlerts() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let reset = now.addingTimeInterval(5 * 86400)
+        let calm = UsageRow(group: "weekly", title: "Weekly", percent: 20, resetsAt: reset)
+        let fast = UsageRow(group: "weekly", title: "Weekly", percent: 50, resetsAt: reset)
+        let high = UsageRow(group: "weekly", title: "Weekly", percent: 92, resetsAt: reset)
+        XCTAssertEqual(alertLevel(for: calm, now: now), .none)
+        XCTAssertEqual(alertLevel(for: fast, now: now), .pace)
+        XCTAssertEqual(alertLevel(for: high, now: now), .high)
+        XCTAssertEqual(alerts(for: [calm, fast, high], now: now).map(\.level), [.pace, .high])
+        // Same limit, window and level give the same key; another level does not.
+        XCTAssertEqual(alerts(for: [fast], now: now).first?.key, alerts(for: [fast], now: now.addingTimeInterval(60)).first?.key)
+        XCTAssertNotEqual(alerts(for: [fast], now: now).first?.key, alerts(for: [high], now: now).first?.key)
+    }
 }
