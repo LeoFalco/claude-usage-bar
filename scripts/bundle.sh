@@ -9,7 +9,8 @@ swift build -c release "$@"
 BIN="$(swift build -c release "$@" --show-bin-path)/ClaudeUsageBar"
 
 APP=dist/ClaudeUsageBar.app
-rm -rf dist && mkdir -p "$APP/Contents/MacOS"
+rm -rf dist && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp "$BIN" "$APP/Contents/MacOS/ClaudeUsageBar"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -17,6 +18,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <plist version="1.0"><dict>
   <key>CFBundleExecutable</key><string>ClaudeUsageBar</string>
   <key>CFBundleIdentifier</key><string>io.github.leofalco.claude-usage-bar</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleName</key><string>Claude Usage Bar</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>

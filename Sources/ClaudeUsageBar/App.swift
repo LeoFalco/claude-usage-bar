@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 import UsageCore
 
@@ -5,42 +6,77 @@ import UsageCore
 struct ClaudeUsageBarApp: App {
     @StateObject private var model = UsageModel()
 
+    init() {
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
+            exit(renderSnapshot(to: args[i + 1]) ? 0 : 1)
+        }
+    }
+
     var body: some Scene {
         MenuBarExtra {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array((model.usage?.rows ?? []).enumerated()), id: \.offset) { _, row in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(row.title).font(.headline)
-                            Spacer()
-                            Text("\(Int(row.percent.rounded()))%").monospacedDigit()
-                        }
-                        ProgressView(value: min(row.percent, 100), total: 100)
-                            .tint(row.percent >= 90 ? .red : row.percent >= 70 ? .orange : .accentColor)
-                        if let resetsAt = row.resetsAt {
-                            Text("\(resetDescription(resetsAt)) · \(resetsAt.formatted(.dateTime.weekday().day().month().hour().minute()))")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                if let error = model.error { Text(error).foregroundStyle(.red) }
-                Divider()
-                HStack {
-                    if let updated = model.updatedAt {
-                        Text("Updated \(updated.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Refresh") { Task { await model.refresh() } }.keyboardShortcut("r")
-                    Button("Quit") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
-                }
-            }
-            .padding()
-            .frame(width: 280)
+            PanelView(model: model)
         } label: {
             Text("✳︎ " + (model.usage?.menuBarTitle ?? (model.error == nil ? "…" : "⚠︎")))
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+struct PanelView: View {
+    @ObservedObject var model: UsageModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array((model.usage?.rows ?? []).enumerated()), id: \.offset) { _, row in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(row.title).font(.headline)
+                        Spacer()
+                        Text("\(Int(row.percent.rounded()))%").monospacedDigit()
+                    }
+                    UsageBar(percent: row.percent)
+                    if let resetsAt = row.resetsAt {
+                        Text("\(resetDescription(resetsAt)) · \(resetsAt.formatted(.dateTime.weekday().day().month().hour().minute()))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    switch projection(for: row) {
+                    case .lasts(let percent)?:
+                        Text("At this pace: lasts, about \(Int(percent.rounded()))% at reset")
+                            .font(.caption).foregroundStyle(.green)
+                    case .runsOut(let date)?:
+                        Text("At this pace: runs out \(date.formatted(.dateTime.weekday().day().month().hour().minute()))")
+                            .font(.caption).foregroundStyle(.orange)
+                    case nil:
+                        EmptyView()
+                    }
+                }
+            }
+            if let error = model.error { Text(error).foregroundStyle(.red) }
+            Divider()
+            HStack {
+                if let updated = model.updatedAt {
+                    Text("Updated \(updated.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Refresh") { Task { await model.refresh() } }.keyboardShortcut("r")
+                Button("") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q").hidden().frame(width: 0)
+                Menu {
+                    Toggle("Open at login", isOn: Binding(get: { model.opensAtLogin }, set: { model.setOpensAtLogin($0) }))
+                    Divider()
+                    Button("Quit") { NSApplication.shared.terminate(nil) }
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel("Options")
+            }
+        }
+        .padding()
+        .frame(width: 280)
     }
 }
 
@@ -49,13 +85,35 @@ final class UsageModel: ObservableObject {
     @Published var usage: Usage?
     @Published var error: String?
     @Published var updatedAt: Date?
+    @Published var opensAtLogin = SMAppService.mainApp.status == .enabled
     private var timer: Timer?
 
+    /// Static model with fixed data, for the README screenshot.
+    init(preview usage: Usage) {
+        self.usage = usage
+        updatedAt = Date()
+        opensAtLogin = true
+    }
+
     init() {
+        // Opt in to launch at login on first run; afterwards the toggle decides.
+        if !UserDefaults.standard.bool(forKey: "didSetUpLoginItem") {
+            UserDefaults.standard.set(true, forKey: "didSetUpLoginItem")
+            setOpensAtLogin(true)
+        }
         Task { await refresh() }
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { await self?.refresh() }
         }
+    }
+
+    func setOpensAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            self.error = "Open at login: \(error.localizedDescription)"
+        }
+        opensAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     func refresh() async {
@@ -103,4 +161,21 @@ func readToken() -> String? {
     }
     let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/.credentials.json")
     return (try? Data(contentsOf: file)).flatMap(accessToken(fromCredentials:))
+}
+
+/// Drawn by hand so the color shows even when the panel is not the key window.
+struct UsageBar: View {
+    let percent: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(percent >= 90 ? Color.red : percent >= 70 ? .orange : .blue)
+                    .frame(width: geo.size.width * min(max(percent, 0), 100) / 100)
+            }
+        }
+        .frame(height: 6)
+        .accessibilityLabel("\(Int(percent.rounded())) percent used")
+    }
 }

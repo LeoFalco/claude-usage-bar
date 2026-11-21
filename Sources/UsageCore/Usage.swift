@@ -105,3 +105,33 @@ public func resetDescription(_ date: Date?, now: Date = Date()) -> String {
     if h > 0 { return "resets in \(h)h \(m)m" }
     return "resets in \(m)m"
 }
+
+/// Where a limit ends up if usage keeps the pace it has had since the window started.
+public enum Projection: Equatable {
+    /// The limit lasts until reset, ending near this percentage.
+    case lasts(percentAtReset: Double)
+    /// The limit hits 100% at this date, before the reset.
+    case runsOut(at: Date)
+}
+
+/// Length of each limit window, by group.
+func windowLength(group: String) -> TimeInterval? {
+    switch group {
+    case "session": return 5 * 3600
+    case "weekly": return 7 * 86400
+    default: return nil
+    }
+}
+
+/// Linear projection from the average pace since the window started.
+/// Returns nil for unknown windows or too early in the window to tell.
+public func projection(for row: UsageRow, now: Date = Date()) -> Projection? {
+    guard let resetsAt = row.resetsAt, let length = windowLength(group: row.group) else { return nil }
+    let elapsed = length - resetsAt.timeIntervalSince(now)
+    // shortcut: linear average since window start, ignores daily rhythm; upgrade to a recent-window rate if it misleads.
+    guard elapsed >= length * 0.05, elapsed <= length else { return nil }
+    if row.percent >= 100 { return .runsOut(at: now) }
+    let projected = row.percent * length / elapsed
+    if projected <= 100 { return .lasts(percentAtReset: projected) }
+    return .runsOut(at: now.addingTimeInterval((100 - row.percent) * elapsed / row.percent))
+}

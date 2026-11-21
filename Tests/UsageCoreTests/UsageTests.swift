@@ -57,4 +57,24 @@ final class UsageTests: XCTestCase {
         XCTAssertEqual(resetDescription(now.addingTimeInterval(-60), now: now), "resets in 0m")
         XCTAssertEqual(resetDescription(nil, now: now), "")
     }
+
+    func testProjection() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let day: TimeInterval = 86400
+        func weekly(_ percent: Double, daysLeft: Double) -> UsageRow {
+            UsageRow(group: "weekly", title: "Weekly", percent: percent, resetsAt: now.addingTimeInterval(daysLeft * day))
+        }
+        // 2 of 7 days elapsed at 20%: ends near 70%.
+        XCTAssertEqual(projection(for: weekly(20, daysLeft: 5), now: now), .lasts(percentAtReset: 70))
+        // 2 days elapsed at 50%: 25% a day, hits 100% two days from now.
+        XCTAssertEqual(projection(for: weekly(50, daysLeft: 5), now: now), .runsOut(at: now.addingTimeInterval(2 * day)))
+        XCTAssertEqual(projection(for: weekly(100, daysLeft: 3), now: now), .runsOut(at: now))
+        // Too early in the window, unknown group, or no reset date: no guess.
+        XCTAssertNil(projection(for: weekly(5, daysLeft: 6.9), now: now))
+        XCTAssertNil(projection(for: UsageRow(group: "monthly", title: "M", percent: 10, resetsAt: now.addingTimeInterval(day)), now: now))
+        XCTAssertNil(projection(for: UsageRow(group: "weekly", title: "W", percent: 10, resetsAt: nil), now: now))
+        // Session window is 5h: 1h elapsed at 10% ends near 50%.
+        let session = UsageRow(group: "session", title: "Session", percent: 10, resetsAt: now.addingTimeInterval(4 * 3600))
+        XCTAssertEqual(projection(for: session, now: now), .lasts(percentAtReset: 50))
+    }
 }
