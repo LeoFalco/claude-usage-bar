@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>AppIcon.ico</ApplicationIcon>
+    <AssemblyName>ClaudeUsageBar</AssemblyName>
+    <RootNamespace>ClaudeUsageBar</RootNamespace>
+    <Product>Claude Usage Bar</Product>
+    <Version>0.0.0-dev</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\UsageCore\UsageCore.csproj" />
+    <EmbeddedResource Include="AppIcon.ico" LogicalName="AppIcon.ico" />
+  </ItemGroup>
+</Project>
