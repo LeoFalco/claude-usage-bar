@@ -134,13 +134,24 @@ final class UsageModel: ObservableObject {
             notify(alerts(for: usage?.rows ?? []))
         } catch {
             self.error = error.localizedDescription
+            // The usage endpoint rate-limits per account; retry when it says so instead of waiting the full 5 min.
+            if let wait = (error as? UsageError)?.retryAfter {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(wait + 1))
+                    await self?.refresh()
+                }
+            }
         }
     }
 }
 
 struct UsageError: LocalizedError {
     let errorDescription: String?
-    init(_ message: String) { errorDescription = message }
+    var retryAfter: Double?
+    init(_ message: String, retryAfter: Double? = nil) {
+        errorDescription = message
+        self.retryAfter = retryAfter
+    }
 }
 
 func fetchUsage() async throws -> Usage {
@@ -152,6 +163,10 @@ func fetchUsage() async throws -> Usage {
     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
     // shortcut: no token refresh of our own; Claude Code refreshes it on its next run. Upgrade if expired tokens become common.
     if status == 401 { throw UsageError("Token expired: open Claude Code once to refresh it") }
+    if status == 429 {
+        let wait = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init) ?? 60
+        throw UsageError("Rate limited, retrying in \(Int(wait))s", retryAfter: wait)
+    }
     guard status == 200 else { throw UsageError("API returned HTTP \(status)") }
     return try Usage.decode(data)
 }
